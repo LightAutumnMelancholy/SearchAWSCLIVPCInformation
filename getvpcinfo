@@ -1,0 +1,99 @@
+#!/bin/bash
+#set -x  #used for debugging
+while getopts "p:r:g:h" arg; do
+    case $arg in
+        p)
+          profiles=${OPTARG}
+          ;;
+        r)
+          regions=${OPTARG}
+          ;;
+        g)
+          grepopts=${OPTARG}
+          ;;
+        h)
+          cat <<- EOF
+          [HELP]: ### ${0}. Go find my VPCs and CIDR blocks, with awscli using my credentials file. ###
+            
+          Golden Rule: Commandline arguments override static variables.           
+
+          [EXAMPLE]: ${0} -p profilefoo profilebar profilebaz -r us-east-1 us-east-2 us-west-3 -g term1\|term2\|term3"
+          
+          [REQUIREMENTS]: This script is setup so that you can customize the variables in the script, or provide them at run time.
+		  
+          [OPTIONAL ARGUMENTS]:
+            -r) [regions] [STRING] This option refers to regions. If more than one region, use a space or IFS seperated list. 
+            -p) [profiles] [STRING] This option refers to the profile to be used for AWS. This should exist in $HOME/.aws/credentials, and if
+            using more than one, should be a space or IFS seperated list.
+            -g  [grepopts] [STRING] It's not recommended for you to modify this. This allows you to ignore default grep options, and use your
+            own options. It absolutely must be formatted and encapsulated 'term1\|term2\|term3'. This needs to evaluate as a string.
+            -h) [HELP] [takes no arguements] Print this dialog to the screen.
+EOF
+         exit 0
+         ;;
+      *)
+         printf "%s\n" "[OOF]:Incorrect syntax, try -h for help"
+         exit 0
+         ;;
+    esac
+done
+
+# Static Variables:
+staticprofiles="your profiles names go here space or IFS seperated as a for loop list would be"
+staticregions="us-east-2 us-east-1 us-west-1 us-west-2 ap-south-1 ap-northeast-2 ap-southeast-1 ap-southeast-2 ap-northeast-1 ca-central-1  eu-central-1 eu-west-1 eu-west-2 eu-west-3 eu-north-1 sa-east-1"
+staticgrepopts="CidrBlock\|VpcId\|Name\|dtEnvironment\|dtTerraformManaged"
+
+
+#Functional Code:
+function ctrl_c() {
+        echo "** CTRL-C (SIGINT) EXITING..."
+        exit 1
+}
+
+function find_vpcs() {
+for profile in ${profiles}
+    do
+        printf "%s\n" "@@@@@@ ${profile} @@@@@"
+        for region in ${regions}
+            do
+                printf "%s\n" "##### ${region} #####" \
+                "--------------------------------------"
+                aws ec2 describe-vpcs --region ${region} --profile ${profile} \
+                | grep "${grepopts}" \
+                | grep -iv CidrBlockState
+                printf "%s\n" "--------------------------------------"
+        done 
+done 2> /dev/null
+}
+# Logical Code:
+trap ctrl_c INT
+missingVariableMessage="is undefined. You can set it statically in the script or at the commandline. Specifying at the command line can be faster, excluding grepopts."
+if [[ ! ${profiles} ]] || [[ ! ${regions} ]] || [[ ! ${grepopts} ]]; then
+        if [[ ! ${profiles} ]]; then
+                profiles=${staticprofiles}
+                if [[ ! $profiles ]]; then        
+                    printf "%s\n" "[ERROR]: Variable \"profiles\" ${missingVariableMessage}"
+                    exit 1
+                fi
+        fi
+        if [[ ! ${regions} ]]; then
+                regions=${staticregions}
+                if [[ ! ${regions} ]]; then
+                    printf "%s\n" "[ERROR]: Variable \"regions\" ${missingVariableMessage}"
+                    exit 1
+                fi
+        fi
+        if [[ ! ${grepopts} ]]; then
+                grepopts=${staticgrepopts}
+                if [[ ! $grepopts ]]; then
+                    printf "%s\n" "[ERROR]: Variable \"grepopts\" ${missingVariableMessage}"
+                    exit 1
+                fi
+        fi
+fi
+
+if [[ ${profiles} ]] || [[ ${regions} ]] || [[ ${grepopts} ]]; then
+	find_vpcs
+else
+	printf "%s\n" "[ERROR]: Missing dynamic or static variables; exiting..."
+fi
